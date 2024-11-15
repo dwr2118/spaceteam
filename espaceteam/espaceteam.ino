@@ -80,7 +80,7 @@ void receiveCallback(const esp_now_recv_info_t *macAddr, const uint8_t *data, in
   // Make sure we are null terminated
   buffer[msgLen] = 0;
   String recvd = String(buffer);
-  Serial.println(recvd);
+  Serial.println(recvd); // this prints to serial the message we have received 
   // Format the MAC address
   char macStr[18];
   // formatMacAddress(macAddr, macStr, 18);
@@ -93,6 +93,10 @@ void receiveCallback(const esp_now_recv_info_t *macAddr, const uint8_t *data, in
     cmdRecvd = recvd;
     redrawCmdRecvd = true;
     timerStart(askExpireTimer);  //once you get an ask, a timer starts
+    Serial.println("From receiveCallback function.");
+    Serial.printf("The timer has been started: %f", timerReadSeconds(askExpireTimer));
+
+    // Here we check if the Done message is for our current substring. 
   } else if (recvd[0] == 'D' && recvd.substring(3) == cmdRecvd) {
     timerWrite(askExpireTimer, 0);
     timerStop(askExpireTimer);
@@ -198,6 +202,7 @@ void textSetup() {
 }
 
 void timerSetup() {
+  
   // https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/timer.html
   askRequestTimer = timerBegin(1000000); // 1MHz
   timerAttachInterrupt(askRequestTimer, &onAskReqTimer);
@@ -207,6 +212,9 @@ void timerSetup() {
   timerAttachInterrupt(askExpireTimer, &onAskExpireTimer);
   timerAlarm(askExpireTimer, expireLength * 1000000, true, 0);
   timerStop(askExpireTimer);
+
+  // Serial.println("timerSetup() has been called and ");
+  // Serial.printf("current askRequestTimer:%d and askExpireTimer:%d",timerRead(askRequestTimer), timerRead(askExpireTimer));
 }
 void setup() {
   Serial.begin(115200);
@@ -237,6 +245,27 @@ void drawControls() {
 
 void loop() {
 
+  // checking how much time is left to respond to the command 
+  // if (timerReadSeconds(askExpireTimer) => 0){
+  //   Serial.println("-----------------------------------------------------");
+  //   Serial.printf("It has been %f seconds since you have received this request.", timerReadSeconds(askExpireTimer));
+  //   Serial.println("-----------------------------------------------------");
+  // }
+
+  // Current time tracking for 25-second interval
+  static unsigned long lastReceiveCallbackTime = 0;
+  
+  // Check if 25 seconds have passed
+  if (millis() - lastReceiveCallbackTime > 25000) {
+    lastReceiveCallbackTime = millis();
+
+    const char* fakeData = "A: Twist the wutangs";  // Sample message
+    int fakeDataLen = strlen(fakeData);
+    
+    // Call the receiveCallback function with simulated data
+    receiveCallback(NULL, (const uint8_t*)fakeData, fakeDataLen);
+  }
+
   if (scheduleCmd1Send) {
     broadcast("D: " + cmd1);
     scheduleCmd1Send = false;
@@ -251,9 +280,10 @@ void loop() {
     scheduleCmdAsk = false;
   }
   if (askExpired) {
+    Serial.println("Your ask has expired.");
     progress = max(0, progress - 1);
     broadcast(String(progress));
-    //tft.fillRect(0, 0, 135, 90, TFT_RED);
+    // tft.fillRect(0, 0, 135, 90, TFT_RED);
     cmdRecvd = waitingCmd;
     redrawCmdRecvd = true;
     askExpired = false;
@@ -261,8 +291,16 @@ void loop() {
 
   if ((millis() - lastRedrawTime) > 50) {
     tft.fillRect(15, lineHeight * 2 + 14, 100, 6, TFT_GREEN);
+
+    // timerRead is reading the time struct that currently holds the count down 
     tft.fillRect(16, lineHeight * 2 + 14 + 1, (((expireLength * 1000000.0) - timerRead(askExpireTimer)) / (expireLength * 1000000.0)) * 98, 4, TFT_RED);
     lastRedrawTime = millis();
+
+
+    // askRequestTimer is counting down but askExpireTimer isn't 
+    // Serial.println("-------------------------------"); 
+    // Serial.printf("current askRequestTimer:%f and askExpireTimer:%f",timerReadSeconds(askRequestTimer), timerReadSeconds(askExpireTimer));
+    // Serial.println("-------------------------------"); 
   }
 
   if (redrawCmdRecvd || redrawProgress) {
