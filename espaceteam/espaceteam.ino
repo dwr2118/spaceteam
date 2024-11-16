@@ -33,7 +33,7 @@ volatile bool scheduleCmdAsk = true;
 hw_timer_t *askRequestTimer = NULL;
 volatile bool askExpired = false;
 hw_timer_t *askExpireTimer = NULL;
-int expireLength = 25;
+int expireLength = 40;
 
 #define ARRAY_SIZE 10
 const String commandVerbs[ARRAY_SIZE] = { "Buzz", "Engage", "Floop", "Bother", "Twist", "Jingle", "Jangle", "Yank", "Press", "Play" };
@@ -206,9 +206,9 @@ void timerSetup() {
   // https://espressif-docs.readthedocs-hosted.com/projects/arduino-esp32/en/latest/api/timer.html
   askRequestTimer = timerBegin(1000000); // 1MHz
   timerAttachInterrupt(askRequestTimer, &onAskReqTimer);
-  timerAlarm(askRequestTimer, 5 * 1000000, true, 0);  //send out an ask every 5 secs
+  timerAlarm(askRequestTimer, 5 * 1000000, true, 0);  //send out an ask every 5 secs 
 
-  askExpireTimer = timerBegin(80000000);
+  askExpireTimer = timerBegin(8000000);
   timerAttachInterrupt(askExpireTimer, &onAskExpireTimer);
   timerAlarm(askExpireTimer, expireLength * 1000000, true, 0);
   timerStop(askExpireTimer);
@@ -245,18 +245,11 @@ void drawControls() {
 
 void loop() {
 
-  // checking how much time is left to respond to the command 
-  // if (timerReadSeconds(askExpireTimer) => 0){
-  //   Serial.println("-----------------------------------------------------");
-  //   Serial.printf("It has been %f seconds since you have received this request.", timerReadSeconds(askExpireTimer));
-  //   Serial.println("-----------------------------------------------------");
-  // }
-
   // Current time tracking for 25-second interval
   static unsigned long lastReceiveCallbackTime = 0;
   
   // Check if 25 seconds have passed
-  if (millis() - lastReceiveCallbackTime > 25000) {
+  if (millis() - lastReceiveCallbackTime > 10000) {
     lastReceiveCallbackTime = millis();
 
     const char* fakeData = "A: Twist the wutangs";  // Sample message
@@ -265,6 +258,14 @@ void loop() {
     // Call the receiveCallback function with simulated data
     receiveCallback(NULL, (const uint8_t*)fakeData, fakeDataLen);
   }
+
+  // checking how much time is left to respond to the command 
+  if (timerReadSeconds(askExpireTimer) > 0.01){
+    Serial.println("-----------------------------------------------------");
+    Serial.printf("It has been %f seconds since you have received this request.", timerReadSeconds(askExpireTimer));
+    Serial.println("-----------------------------------------------------");
+  }
+
 
   if (scheduleCmd1Send) {
     broadcast("D: " + cmd1);
