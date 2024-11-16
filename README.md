@@ -30,4 +30,8 @@ How to recreate this project:
 4. Open module.ino and click the right arrow button in the top-left to upload the code to your board.
 5. Marvel at the moving hearts~ And feel free to experiment--try changing the colors, the sizes of the hearts, whatever you'd like!
 
-Read more about my creative process at: (https://tinyurl.com/ppg-heart-documentation)
+Read more about our creative processes here: 
+1. Diego: ()
+2. Karin: ()
+3. Aliya: ()
+4. Hari: ()
