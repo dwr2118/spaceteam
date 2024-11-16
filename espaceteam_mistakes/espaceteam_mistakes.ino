@@ -45,6 +45,7 @@ int expireLength = 25;
 const String commandVerbs[ARRAY_SIZE] = { "Buzz", "Engage", "Floop", "Bother", "Twist", "Jingle", "Jangle", "Yank", "Press", "Play" };
 const String commandNounsFirst[ARRAY_SIZE] = { "foo", "dev", "bobby", "jaw", "tooty", "wu", "fizz", "rot", "tea", "bee" };
 const String commandNounsSecond[ARRAY_SIZE] = { "bars", "ices", "pins", "nobs", "zops", "tangs", "bells", "wels", "pops", "bops" };
+uint16_t color[5] = {TFT_GREEN, TFT_YELLOW, TFT_ORANGE, TFT_RED};
 
 int lineHeight = 30;
 
@@ -251,7 +252,7 @@ void drawControls() {
 }
 
 void loop() {
-
+  int i = 0;
   if (scheduleCmd1Send) {
     broadcast("D: " + cmd1);
     scheduleCmd1Send = false;
@@ -281,9 +282,15 @@ void loop() {
     lastRedrawTime = millis();
   }
 
-  if (redrawCmdRecvd || redrawProgress) {
-    tft.setTextColor(TFT_GREEN);
-
+  if (redrawCmdRecvd || redrawProgress){
+    //floor the number to get the correct time
+    uint16_t time_elapsed = floor(timerReadSeconds(askExpireTimer));
+    //set the color by using the time_elapsed
+    uint16_t selectedColor = color[time_elapsed % 5]; 
+    tft.setTextColor(selectedColor); 
+    // Print the selected color
+    Serial.print("color: 0x");
+    Serial.println(selectedColor, HEX);
     tft.fillRect(0, 0, 135, 65, TFT_BLACK);
     tft.drawString(cmdRecvd.substring(0, cmdRecvd.indexOf(' ')), 0, 0, 2);
     tft.drawString(cmdRecvd.substring(cmdRecvd.indexOf(' ') + 1), 0, 0 + lineHeight, 2);
