@@ -265,7 +265,28 @@ void drawControls() {
 }
 
 void loop() {
+  // Adding in Diego's code for single player mode to fake the data
+  // Current time tracking for 25-second interval
+  static unsigned long lastReceiveCallbackTime = 0;
+  
+  // Check if 25 seconds have passed
+  if (millis() - lastReceiveCallbackTime > 10000) {
+    lastReceiveCallbackTime = millis();
 
+    const char* fakeData = "A: Twist the wutangs";  // Sample message
+    int fakeDataLen = strlen(fakeData);
+    
+    // Call the receiveCallback function with simulated data
+    receiveCallback(NULL, (const uint8_t*)fakeData, fakeDataLen);
+  }
+
+  // checking how much time is left to respond to the command 
+  if (timerReadSeconds(askExpireTimer) > 0.01){
+    Serial.println("-----------------------------------------------------");
+    Serial.printf("It has been %f seconds since you have received this request.", timerReadSeconds(askExpireTimer));
+    Serial.println("-----------------------------------------------------");
+  }
+  // End of Diego's code
   if (scheduleCmd1Send) {
     broadcast("D: " + cmd1);
     onCmdRedraw();
@@ -303,25 +324,39 @@ void loop() {
     tft.fillRect(16, lineHeight * 2 + 14 + 1, (((expireLength * 1000000.0) - timerRead(askExpireTimer)) / (expireLength * 1000000.0)) * 98, 4, TFT_RED);
     lastRedrawTime = millis();
   }
-
+  
   if (redrawCmdRecvd || redrawProgress) {
+    
     if (timerFlash) {
-      // Divide by 1000000.0 seconds to find miliseconds -> seconds and to turn to double
-      double timeLeft = timerRead(askExpireTimer) / 1000000.0; 
-      // Fraction of time remaining to change color, the output time is in decimal form
-      double timeFraction = timeLeft / expireLength;          
-      // Greater than 50% is green, 20-50% is yellow, below 20% is red
-      if (timeFraction > 0.5) {
-        tft.setTextColor(TFT_GREEN);
-      } else if (timeFraction > 0.2) {
-        tft.setTextColor(TFT_YELLOW);
+      // Read the remaining time -> convert it to int
+      int timeElapsed = timerRead(askExpireTimer) / 1000000; 
+
+      // Debugging the timer values
+      Serial.printf("Time Elapsed: %d seconds\n", timeElapsed);
+
+      // Adjust text color based on the time left
+      // Use tft.setTextColor(TFT_color, TFT_BLACK); to tft.setTextColor(foreground, background)
+      if (timeElapsed < 5) {
+        Serial.println("Setting text color to GREEN");
+        tft.setTextColor(TFT_GREEN, TFT_BLACK); 
+      } else if (timeElapsed < 18) {
+        Serial.println("Setting text color to YELLOW");
+        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
       } else {
-        tft.setTextColor(TFT_RED);
+        Serial.println("Setting text color to RED");
+        tft.setTextColor(TFT_RED, TFT_BLACK);
       }
+
+      // Ensure text is redrawn with the new color
+      tft.fillRect(0, 0, 135, 65, TFT_BLACK); // Clear the area
+      tft.drawString(cmdRecvd.substring(0, cmdRecvd.indexOf(' ')), 0, 0, 2);
+      tft.drawString(cmdRecvd.substring(cmdRecvd.indexOf(' ') + 1), 0, lineHeight, 2);
+
     } else {
-      Serial.println("GREEN");
-      tft.setTextColor(TFT_GREEN);
-    } 
+      Serial.println("Timer Flash inactive, setting GREEN");
+      tft.setTextColor(TFT_GREEN, TFT_BLACK);
+    }
+
     tft.fillRect(0, 0, 135, 65, TFT_BLACK);
     tft.drawString(cmdRecvd.substring(0, cmdRecvd.indexOf(' ')), 0, 0, 2);
     tft.drawString(cmdRecvd.substring(cmdRecvd.indexOf(' ') + 1), 0, 0 + lineHeight, 2);
