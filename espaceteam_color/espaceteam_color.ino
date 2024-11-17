@@ -156,6 +156,8 @@ void receiveCallback(const esp_now_recv_info_t *macAddr, const uint8_t *data, in
   } else if (recvd[0] == 'D' && recvd.substring(3) == cmdRecvd) {
     timerWrite(askExpireTimer, 0);
     timerStop(askExpireTimer);
+    // Edited: Adding in making the screen black whenever waitCmd is called 
+    tft.fillRect(0, 0, 135, 65, TFT_BLACK);
     tft.setTextColor(TFT_GREEN);
     timerFlash = false;
     cmdRecvd = waitingCmd;
@@ -219,7 +221,7 @@ void textSetup() {
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   drawControls();
-
+  tft.fillRect(0, 0, 135, 65, TFT_BLACK);
   cmdRecvd = waitingCmd;
   redrawCmdRecvd = true;
 }
@@ -307,6 +309,7 @@ void loop() {
     progress = max(0, progress - 1);
     broadcast(String(progress));
     //tft.fillRect(0, 0, 135, 90, TFT_RED);
+    tft.fillRect(0, 0, 135, 65, TFT_BLACK);
     cmdRecvd = waitingCmd;
     redrawCmdRecvd = true;
     askExpired = false;
@@ -346,21 +349,20 @@ void loop() {
         Serial.println("Setting text color to RED");
         tft.setTextColor(TFT_RED, TFT_BLACK);
       }
-
+      /**
       // Ensure text is redrawn with the new color
       tft.fillRect(0, 0, 135, 65, TFT_BLACK); // Clear the area
       tft.drawString(cmdRecvd.substring(0, cmdRecvd.indexOf(' ')), 0, 0, 2);
       tft.drawString(cmdRecvd.substring(cmdRecvd.indexOf(' ') + 1), 0, lineHeight, 2);
-
+      **/
     } else {
       Serial.println("Timer Flash inactive, setting GREEN");
       tft.setTextColor(TFT_GREEN, TFT_BLACK);
     }
-
-    tft.fillRect(0, 0, 135, 65, TFT_BLACK);
+    
+    //tft.fillRect(0, 0, 135, 65, TFT_BLACK);
     tft.drawString(cmdRecvd.substring(0, cmdRecvd.indexOf(' ')), 0, 0, 2);
     tft.drawString(cmdRecvd.substring(cmdRecvd.indexOf(' ') + 1), 0, 0 + lineHeight, 2);
-
     redrawCmdRecvd = false;
 
     if (mistakesRedraw) {
