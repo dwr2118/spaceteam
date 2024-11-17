@@ -21,10 +21,9 @@ volatile bool scheduleCmd2Send = false;
 
 String cmdRecvd = "";
 const String waitingCmd = "Wait for cmds";
-const String asteroidCmd = "Asteroid incoming!";
 bool redrawCmdRecvd = false;
 
-//For mistake counting
+//For mistake counter;
 int mistakesMade = 0;
 bool forceRedraw = false;
 bool mistakesRedraw = false;
@@ -33,6 +32,8 @@ bool mistakesRedraw = false;
 int progress = 0;
 bool redrawProgress = true;
 int lastRedrawTime = 0;
+bool timerFlash = false;
+bool flash = false;
 
 //we could also use xSemaphoreGiveFromISR and its associated fxns, but this is fine
 volatile bool scheduleCmdAsk = true;
@@ -40,12 +41,12 @@ hw_timer_t *askRequestTimer = NULL;
 volatile bool askExpired = false;
 hw_timer_t *askExpireTimer = NULL;
 int expireLength = 25;
+hw_timer_t *cmdRedraw = NULL;
 
 #define ARRAY_SIZE 10
 const String commandVerbs[ARRAY_SIZE] = { "Buzz", "Engage", "Floop", "Bother", "Twist", "Jingle", "Jangle", "Yank", "Press", "Play" };
 const String commandNounsFirst[ARRAY_SIZE] = { "foo", "dev", "bobby", "jaw", "tooty", "wu", "fizz", "rot", "tea", "bee" };
 const String commandNounsSecond[ARRAY_SIZE] = { "bars", "ices", "pins", "nobs", "zops", "tangs", "bells", "wels", "pops", "bops" };
-uint16_t color[5] = {TFT_GREEN, TFT_YELLOW, TFT_ORANGE, TFT_RED};
 
 int lineHeight = 30;
 
@@ -80,7 +81,6 @@ void broadcast(const String &message)
   if (!esp_now_is_peer_exist(broadcastAddress)) {
     esp_now_add_peer(&peerInfo);
   }
-
   // Send message
   esp_err_t result = esp_now_send(broadcastAddress, (const uint8_t *)message.c_str(), message.length());
 }
@@ -107,6 +107,12 @@ void IRAM_ATTR onAskExpireTimer() {
   }
   timerStop(askExpireTimer);
   timerWrite(askExpireTimer, 0);
+}
+
+void IRAM_ATTR onCmdRedraw() {
+  tft.fillRect(0, 115, 135, 135, TFT_BLACK);
+  broadcast("R: command redraw");
+  drawControls();
 }
 
 void receiveCallback(const esp_now_recv_info_t *macAddr, const uint8_t *data, int dataLen)
@@ -150,20 +156,26 @@ void receiveCallback(const esp_now_recv_info_t *macAddr, const uint8_t *data, in
   } else if (recvd[0] == 'D' && recvd.substring(3) == cmdRecvd) {
     timerWrite(askExpireTimer, 0);
     timerStop(askExpireTimer);
+    tft.setTextColor(TFT_GREEN);
+    timerFlash = false;
     cmdRecvd = waitingCmd;
     progress = progress + 10;
     broadcast("P: " + String(progress));
 
+    //When done, get new commands
+    onCmdRedraw();
     redrawCmdRecvd = true;
   } else if (recvd[0] == 'P') {
     recvd.remove(0, 3);
     progress = recvd.toInt();
     redrawProgress = true;
+  } else if(recvd[0] == 'R') {
+    forceRedraw = true;
+    onAskExpireTimer();
   } else if(recvd[0] == 'X') {
     mistakesMade++;
     mistakesRedraw = true;
   } 
-  
 }
 
 void espnowSetup() {
@@ -245,6 +257,7 @@ void drawControls() {
   cmd2 = genCommand();
 
   cmd1.indexOf(' ');
+  tft.setTextColor(TFT_GREEN);
   tft.drawString("B1: " + cmd1.substring(0, cmd1.indexOf(' ')), 0, 115, 2);
   tft.drawString(cmd1.substring(cmd1.indexOf(' ') + 1), 0, 115 + lineHeight, 2);
   tft.drawString("B2: " + cmd2.substring(0, cmd2.indexOf(' ')), 0, 175, 2);
@@ -252,13 +265,15 @@ void drawControls() {
 }
 
 void loop() {
-  int i = 0;
+
   if (scheduleCmd1Send) {
     broadcast("D: " + cmd1);
+    onCmdRedraw();
     scheduleCmd1Send = false;
   }
   if (scheduleCmd2Send) {
     broadcast("D: " + cmd2);
+    onCmdRedraw();
     scheduleCmd2Send = false;
   }
 
@@ -276,21 +291,37 @@ void loop() {
     askExpired = false;
   }
 
+  if(timerReadSeconds(askExpireTimer) > 12) {
+    redrawCmdRecvd = true;
+    timerFlash = true;
+  } else { 
+    timerFlash = false;
+  }
+
   if ((millis() - lastRedrawTime) > 50) {
     tft.fillRect(15, lineHeight * 2 + 14, 100, 6, TFT_GREEN);
     tft.fillRect(16, lineHeight * 2 + 14 + 1, (((expireLength * 1000000.0) - timerRead(askExpireTimer)) / (expireLength * 1000000.0)) * 98, 4, TFT_RED);
     lastRedrawTime = millis();
   }
 
-  if (redrawCmdRecvd || redrawProgress){
-    //floor the number to get the correct time
-    uint16_t time_elapsed = floor(timerReadSeconds(askExpireTimer));
-    //set the color by using the time_elapsed
-    uint16_t selectedColor = color[time_elapsed % 5]; 
-    tft.setTextColor(selectedColor); 
-    // Print the selected color
-    Serial.print("color: 0x");
-    Serial.println(selectedColor, HEX);
+  if (redrawCmdRecvd || redrawProgress) {
+    if (timerFlash) {
+      // Divide by 1000000.0 seconds to find miliseconds -> seconds and to turn to double
+      double timeLeft = timerRead(askExpireTimer) / 1000000.0; 
+      // Fraction of time remaining to change color, the output time is in decimal form
+      double timeFraction = timeLeft / expireLength;          
+      // Greater than 50% is green, 20-50% is yellow, below 20% is red
+      if (timeFraction > 0.5) {
+        tft.setTextColor(TFT_GREEN);
+      } else if (timeFraction > 0.2) {
+        tft.setTextColor(TFT_YELLOW);
+      } else {
+        tft.setTextColor(TFT_RED);
+      }
+    } else {
+      Serial.println("GREEN");
+      tft.setTextColor(TFT_GREEN);
+    } 
     tft.fillRect(0, 0, 135, 65, TFT_BLACK);
     tft.drawString(cmdRecvd.substring(0, cmdRecvd.indexOf(' ')), 0, 0, 2);
     tft.drawString(cmdRecvd.substring(cmdRecvd.indexOf(' ') + 1), 0, 0 + lineHeight, 2);
