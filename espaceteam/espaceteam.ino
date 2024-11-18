@@ -23,6 +23,15 @@ String cmdRecvd = "";
 const String waitingCmd = "Wait for cmds";
 bool redrawCmdRecvd = false;
 
+//For mistake counter;
+int mistakesMade = 0;
+bool forceRedraw = false;
+
+// for text flashing when time running out
+bool timerFlash = false;
+bool flash = false;
+bool setYellow = false;
+
 // for drawing progress bars
 int progress = 0;
 bool redrawProgress = true;
@@ -96,8 +105,13 @@ void receiveCallback(const esp_now_recv_info_t *macAddr, const uint8_t *data, in
   } else if (recvd[0] == 'D' && recvd.substring(3) == cmdRecvd) {
     timerWrite(askExpireTimer, 0);
     timerStop(askExpireTimer);
+
+    //force set text color to green for waitingCmd refresh
+    tft.setTextColor(TFT_GREEN);
+    timerFlash = false;
+    
     cmdRecvd = waitingCmd;
-    progress = progress + 1;
+    progress = progress + 10;
     broadcast("P: " + String(progress));
     redrawCmdRecvd = true;
 
@@ -105,6 +119,9 @@ void receiveCallback(const esp_now_recv_info_t *macAddr, const uint8_t *data, in
     recvd.remove(0, 3);
     progress = recvd.toInt();
     redrawProgress = true;
+  } else if(recvd[0] == 'X') {
+    forceRedraw = false;
+    mistakesMade++;
   }
 }
 
@@ -203,7 +220,7 @@ void timerSetup() {
   timerAttachInterrupt(askRequestTimer, &onAskReqTimer);
   timerAlarm(askRequestTimer, 5 * 1000000, true, 0);  //send out an ask every 5 secs
 
-  askExpireTimer = timerBegin(80000000);
+  askExpireTimer = timerBegin(1000000);
   timerAttachInterrupt(askExpireTimer, &onAskExpireTimer);
   timerAlarm(askExpireTimer, expireLength * 1000000, true, 0);
   timerStop(askExpireTimer);
@@ -225,9 +242,12 @@ String genCommand() {
 }
 
 void drawControls() {
-
   cmd1 = genCommand();
   cmd2 = genCommand();
+
+  //force set reset text to green
+  tft.setTextColor(TFT_GREEN);
+
   cmd1.indexOf(' ');
   tft.drawString("B1: " + cmd1.substring(0, cmd1.indexOf(' ')), 0, 90, 2);
   tft.drawString(cmd1.substring(cmd1.indexOf(' ') + 1), 0, 90 + lineHeight, 2);
@@ -251,12 +271,68 @@ void loop() {
     scheduleCmdAsk = false;
   }
   if (askExpired) {
-    progress = max(0, progress - 1);
-    broadcast(String(progress));
-    //tft.fillRect(0, 0, 135, 90, TFT_RED);
+    if(!forceRedraw) {
+      broadcast("X: Mistake made");
+      mistakesMade++;
+    }
+    
+    //force set text to green for waitingCmd, just in case
+    tft.setTextColor(TFT_GREEN);
     cmdRecvd = waitingCmd;
     redrawCmdRecvd = true;
+    
     askExpired = false;
+  }
+
+  //Mistake drawing conditionals
+  if (mistakesMade >= 1) {
+    tft.drawLine(5, lineHeight * 2 + 30, 25, lineHeight * 2 + 50, TFT_RED);
+    tft.drawLine(25, lineHeight * 2 + 30, 5, lineHeight * 2 + 50, TFT_RED);
+  }
+  
+  if (mistakesMade >= 2) {
+    tft.drawLine(29, lineHeight * 2 + 30, 49, lineHeight * 2 + 50, TFT_RED);
+    tft.drawLine(49, lineHeight * 2 + 30, 29, lineHeight * 2 + 50, TFT_RED);
+  }
+  
+  if (mistakesMade >= 3) {
+    tft.drawLine(53, lineHeight * 2 + 30, 73, lineHeight * 2 + 50, TFT_RED);
+    tft.drawLine(73, lineHeight * 2 + 30, 53, lineHeight * 2 + 50, TFT_RED);
+  }
+  
+  if (mistakesMade >= 4) {
+    tft.drawLine(77, lineHeight * 2 + 30, 97, lineHeight * 2 + 50, TFT_RED);
+    tft.drawLine(97, lineHeight * 2 + 30, 77, lineHeight * 2 + 50, TFT_RED);
+  }
+  
+  //Limit hit, game over screen
+  if (mistakesMade >= 5) {
+    broadcast("X: Mistake made");
+    tft.fillScreen(TFT_GREEN);
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_RED, TFT_GREEN);
+    tft.drawString("GAME", 20, 80, 2);
+    tft.drawString("OVER", 20, 140, 2);
+    delay(6000);
+    ESP.restart();
+  }
+
+  //variable and conditional for text flashing
+  double timePassed = timerReadSeconds(askExpireTimer);
+
+  //if timePassed is between 50-80% of total expireLength, set flashing color to Yellow
+  if (timePassed > (0.5 * expireLength) && timePassed < (0.8 * expireLength)) {
+    setYellow = true;
+    timerFlash = true;
+    redrawCmdRecvd = true;
+  } else if (timePassed >= (0.8 * expireLength)) {
+    //if timePassed is over 80% of total expireLength, set flashing color to Red
+    setYellow = false;
+    timerFlash = true;
+    redrawCmdRecvd = true;
+  } else {
+    setYellow = false;
+    timerFlash = false;
   }
 
   if ((millis() - lastRedrawTime) > 50) {
@@ -266,6 +342,33 @@ void loop() {
   }
 
   if (redrawCmdRecvd || redrawProgress) {
+
+    //Conditional to alternate between yellow/white and red/white flashing
+    if(timerFlash) {
+      if(flash) {
+        if(setYellow){
+          delay(250);
+          tft.setTextColor(TFT_YELLOW);
+        } else {
+          delay(100);
+          tft.setTextColor(TFT_RED);
+        }
+        flash = false;
+      } else {
+        delay(250);
+        Serial.println("WHITE");
+        tft.setTextColor(TFT_WHITE);
+        flash = true;
+      }
+    } else {
+      tft.setTextColor(TFT_GREEN);
+    }
+
+    //force setting waitingCmd to always be green, just in case
+    if(cmdRecvd == waitingCmd) {
+      tft.setTextColor(TFT_GREEN);
+    }
+    
     tft.fillRect(0, 0, 135, 90, TFT_BLACK);
     tft.drawString(cmdRecvd.substring(0, cmdRecvd.indexOf(' ')), 0, 0, 2);
     tft.drawString(cmdRecvd.substring(cmdRecvd.indexOf(' ') + 1), 0, 0 + lineHeight, 2);
@@ -283,6 +386,13 @@ void loop() {
     } else {
       tft.fillRect(15, lineHeight * 2 + 5, 100, 6, TFT_GREEN);
       tft.fillRect(16, lineHeight * 2 + 5 + 1, progress, 4, TFT_BLUE);
+
+      //Mistake counter squares
+      tft.drawRect(5, lineHeight * 2 + 30, 20, 20, TFT_GREEN);
+      tft.drawRect(29, lineHeight * 2 + 30, 20, 20, TFT_GREEN);
+      tft.drawRect(53, lineHeight * 2 + 30, 20, 20, TFT_GREEN);
+      tft.drawRect(77, lineHeight * 2 + 30, 20, 20, TFT_GREEN);
+      tft.drawRect(101, lineHeight * 2 + 30, 20, 20, TFT_GREEN);
     }
     redrawProgress = false;
   }
