@@ -8,7 +8,7 @@ What you will need:
 4. Install the [Arduino IDE](https://www.arduino.cc/en/software)
 
 ## Arduino IDE Setup:
-**1. Download the TFT_eSPI library by Bodmer:**
+1. Download the TFT_eSPI library by Bodmer:
     - Open Arduino IDE
     - Click Tools > Manage Libraries
     - Search for "tft_espi" by Bodmer and click install.
@@ -17,7 +17,7 @@ What you will need:
     - Comment out "#include <User_setup.h>" near the top of the page
     - Uncomment "#include <User_Setups/Setup25_TTGO_T_Display.h>" further down the page (the lines are in numeric order).
 
-**2. Install the ESP 32 Board Library:**
+2. Install the ESP 32 Board Library:
     - We will install it through Arduino IDE.
     - First, go to [this website](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html) and under "Installing using Arduino IDE" copy the "Stable release link".
     - Open Arduino IDE.
