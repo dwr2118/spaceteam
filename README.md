@@ -1,10 +1,12 @@
 # Spaceteam
+A modified version of the base code for ESP32 version of the game 'Spaceteam'
+Original base code: [https://github.com/ttseng/COMS3930-Fall2024/blob/main/Module%203/espaceteam.ino](https://github.com/ttseng/COMS3930-Fall2024/blob/main/Module%203/espaceteam.ino)
 Contributing members: Aliya Tang, Diego Rivas Lazala, Hari Manasa Bhimaraju, and Karin Novelia
-
-What you will need:
-1. A LilyGo T-Display board.
+![game_over_screen](https://github.com/user-attachments/assets/d6385f60-8493-4d72-8d2a-c9ca3559a64b)
+## What you will need:
+1. Several LilyGo T-Display board (at least 2 for the game to run).
 2. Install the correct [driver](https://github.com/Xinyuan-LilyGO/TTGO-T-Display) for the LilyGo T-Display.
-3. USB-cable with working data connections.
+3. USB-C cable with working data connections.
 4. Install the [Arduino IDE](https://www.arduino.cc/en/software)
 
 ## Arduino IDE Setup:
@@ -29,8 +31,8 @@ What you will need:
 ## How to recreate this project:
 1. After setting up, connect your board to your computer with the USB-C cable.
 2. Open Arduino IDE. Click the upper-left dropdown menu to select your Board and Port. It will usually pop-up as "LilyGo T-Display" on port "COM xx".
-4. Open module.ino and click the right arrow button in the top-left to upload the code to your board.
-5. Marvel at the moving hearts~ And feel free to experiment--try changing the colors, the sizes of the hearts, whatever you'd like!
+4. Open 'espaceteam.ino' and upload it to all ESP32 devices
+5. Try out the game for yourself!
 
 ## Design Documentation: 
 Read more about our creative processes [here](https://tinyurl.com/interactive-spaceteam). 
