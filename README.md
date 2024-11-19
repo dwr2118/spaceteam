@@ -16,6 +16,7 @@ What you will need:
     - Open the file "User_Setup_Select.h"
     - Comment out "#include <User_setup.h>" near the top of the page
     - Uncomment "#include <User_Setups/Setup25_TTGO_T_Display.h>" further down the page (the lines are in numeric order).
+
 **2. Install the ESP 32 Board Library:**
     - We will install it through Arduino IDE.
     - First, go to [this website](https://docs.espressif.com/projects/arduino-esp32/en/latest/installing.html) and under "Installing using Arduino IDE" copy the "Stable release link".
