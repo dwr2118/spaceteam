@@ -2,6 +2,7 @@
 A modified version of the base code for ESP32 version of the game 'Spaceteam'
 Original base code: [https://github.com/ttseng/COMS3930-Fall2024/blob/main/Module%203/espaceteam.ino](https://github.com/ttseng/COMS3930-Fall2024/blob/main/Module%203/espaceteam.ino)
 Contributing members: Aliya Tang, Diego Rivas Lazala, Hari Manasa Bhimaraju, and Karin Novelia
+
 ![game_over_screen](https://github.com/user-attachments/assets/d6385f60-8493-4d72-8d2a-c9ca3559a64b)
 ## What you will need:
 1. Several LilyGo T-Display board (at least 2 for the game to run).
