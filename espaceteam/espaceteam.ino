@@ -1,5 +1,5 @@
 /*
-  Spacetime using ESP32
+  Spaceteam using ESP32
 
   Modified by Tiffany Tseng for esp32 Arduino Board Definition 3.0+ 
   Originally created by Mark Santolucito for Barnard COMS 3930
@@ -41,6 +41,14 @@ bool forceRedraw = false;
 bool timerFlash = true;
 bool flash = false;
 bool setYellow = false;
+
+// for drawing a different background
+#include "spaceteam_bg.h"
+TFT_eSprite bgSprite = TFT_eSprite(&tft);
+int imageW = 310; 
+int imageH = 316; 
+int screenW = 135; 
+int screenH = 240; 
 
 // for drawing progress bars
 int progress = 0;
@@ -220,9 +228,11 @@ void textSetup() {
 
   tft.setTextSize(2);
   tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setTextColor(TFT_GREEN);
   drawControls();
   
+  tft.fillRect(0, 0, 135, 65, TFT_BLACK); 
+
   cmdRecvd = waitingCmd;
   redrawCmdRecvd = true;
 }
@@ -242,6 +252,12 @@ void timerSetup() {
 void setup() {
   Serial.begin(115200);
 
+  // making the background sprite which holds the background image 
+  tft.setSwapBytes(true);
+  bgSprite.createSprite(screenW,screenH);
+  bgSprite.setSwapBytes(true);
+  bgSprite.pushImage(0, 0, imageW, imageH, spaceteam_bg);
+
   textSetup();
   buttonSetup();
   espnowSetup();
@@ -259,6 +275,9 @@ void drawControls() {
   cmd1 = genCommand();
   cmd2 = genCommand();
 
+  //Add space background behind buttons
+  bgSprite.pushSprite(0, 115);
+  
   cmd1.indexOf(' ');
   tft.setTextColor(TFT_GREEN);
   tft.drawString("B1: " + cmd1.substring(0, cmd1.indexOf(' ')), 0, 115, 2);
@@ -272,9 +291,6 @@ void loop() {
   // Regenerating new button commands every 30 seconds
   if (millis() - lastUpdatedTime >= 30000) {
     lastUpdatedTime = millis();
-
-    // Redraw the background behind the button text
-    tft.fillRect(0, 115, 135, 135, TFT_BLACK);
     
     // Broadcast to other ESPs that buttons are being redrawn, reset asks to waitingCmd
     forceRedraw = true;
@@ -336,9 +352,9 @@ void loop() {
 
   //If 5 mistakes made, game over screen
   if (mistakesMade == 5) {
-    tft.fillScreen(TFT_GREEN);
+    bgSprite.pushSprite(0, 0);
     tft.setTextSize(3);
-    tft.setTextColor(TFT_RED, TFT_GREEN);
+    tft.setTextColor(TFT_WHITE);
     tft.drawString("GAME", 20, 80, 2);
     tft.drawString("OVER", 20, 140, 2);
     delay(6000);
@@ -405,7 +421,9 @@ void loop() {
     if (progress >= 100) {
       tft.fillScreen(TFT_BLUE);
       tft.setTextSize(3);
-      tft.setTextColor(TFT_WHITE, TFT_BLUE);
+      bgSprite.pushSprite(0, 0);
+
+      tft.setTextColor(TFT_WHITE);
       tft.drawString("GO", 45, 20, 2);
       tft.drawString("COMS", 20, 80, 2);
       tft.drawString("3930!", 18, 130, 2);
