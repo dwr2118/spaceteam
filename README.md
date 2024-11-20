@@ -36,7 +36,7 @@ Contributing members: Aliya Tang, Diego Rivas Lazala, Hari Manasa Bhimaraju, and
 1. After setting up, connect your board to your computer with the USB-C cable.
 2. Open Arduino IDE. Click the upper-left dropdown menu to select your Board and Port. It will usually pop-up as "LilyGo T-Display" on port "COM xx".
 4. Open 'espaceteam.ino' and upload it to all ESP32 devices
-5. Try out the game for yourself!
+5. Try out the game for yourself! For best experience, once all devices are connected, click reset at the same time on all devices to sync round
 
 ## Design Documentation: 
 Read more about our creative processes [here](https://tinyurl.com/interactive-spaceteam). 
