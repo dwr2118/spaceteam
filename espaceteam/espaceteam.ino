@@ -4,6 +4,16 @@
   Modified by Tiffany Tseng for esp32 Arduino Board Definition 3.0+ 
   Originally created by Mark Santolucito for Barnard COMS 3930
   Based on DroneBot Workshop 2022 ESP-NOW Multi Unit Demo
+
+  Further modified for COMS 3930 Module 3 by:
+  Aliya Tang, Diego Rivas Lazala, Hari Manasa Bhimaraju, and Karin Novelia
+
+  Added following features:
+  -Fixed red timer bar going down - set for 25s.
+  -Progress increments by 10 instead of 1.
+  -Added mistake (ask not completed in time) counter. 5 mistakes goes to GAME OVER screen.
+  -Added text flashing colors according to time left for urgency.
+  -Randomize button controls every 30s.
 */
 
 // Include Libraries
@@ -26,14 +36,19 @@ bool redrawCmdRecvd = false;
 //For mistake counter;
 int mistakesMade = 0;
 bool forceRedraw = false;
-bool mistakesRedraw = false;
+
+//for text changing colors when time is running out
+bool timerFlash = true;
+bool flash = false;
+bool setYellow = false;
 
 // for drawing progress bars
 int progress = 0;
 bool redrawProgress = true;
 int lastRedrawTime = 0;
-bool timerFlash = false;
-bool flash = false;
+
+//counter for button commands randomizing every 30s
+int lastUpdatedTime = 0; 
 
 //we could also use xSemaphoreGiveFromISR and its associated fxns, but this is fine
 volatile bool scheduleCmdAsk = true;
@@ -41,7 +56,6 @@ hw_timer_t *askRequestTimer = NULL;
 volatile bool askExpired = false;
 hw_timer_t *askExpireTimer = NULL;
 int expireLength = 25;
-hw_timer_t *cmdRedraw = NULL;
 
 #define ARRAY_SIZE 10
 const String commandVerbs[ARRAY_SIZE] = { "Buzz", "Engage", "Floop", "Bother", "Twist", "Jingle", "Jangle", "Yank", "Press", "Play" };
@@ -58,6 +72,70 @@ void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
 // Formats MAC Address
 {
   snprintf(buffer, maxLength, "%02x:%02x:%02x:%02x:%02x:%02x", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
+}
+
+void receiveCallback(const esp_now_recv_info_t *macAddr, const uint8_t *data, int dataLen)
+/* Called when data is received
+   You can receive 3 types of messages
+   1) a "ASK" message, which indicates that your device should display the cmd if the device is free
+   2) a "DONE" message, which indicates the current ASK? cmd has been executed
+   3) a "PROGRESS" message, indicating a change in the progress of the spaceship
+   
+   Messages are formatted as follows:
+   [A/D]: cmd
+   For example, an ASK message for "Twist the wutangs":
+   A: Twist the wutangs
+   For example, a DONE message for "Engage the devnobs":
+   D: Engage the devnobs
+   For example, a PROGESS message for 75% progress
+   P: 75
+
+   Added modifications:
+   A REDRAW message to reset to waitingCmd that says "R: buttons redraw"
+   A MISTAKE message to add to counter that says "X: mistake made"
+*/
+{
+  // Only allow a maximum of 250 characters in the message + a null terminating byte
+  char buffer[ESP_NOW_MAX_DATA_LEN + 1];
+  int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
+  strncpy(buffer, (const char *)data, msgLen);
+
+  // Make sure we are null terminated
+  buffer[msgLen] = 0;
+  String recvd = String(buffer);
+  Serial.println(recvd);
+  // Format the MAC address
+  char macStr[18];
+  // formatMacAddress(macAddr, macStr, 18);
+
+  // Send Debug log message to the serial port
+  Serial.printf("Received message from: %s \n%s\n", macStr, buffer);
+  if (recvd[0] == 'A' && cmdRecvd == waitingCmd && random(100) < 30)  //only take an ask if you don't have an ask already and only take it XX% of the time
+  {
+    recvd.remove(0, 3);
+    tft.fillRect(0, 0, 135, 65, TFT_BLACK);
+    cmdRecvd = recvd;
+    redrawCmdRecvd = true;
+    timerStart(askExpireTimer);  //once you get an ask, a timer starts
+  } else if (recvd[0] == 'D' && recvd.substring(3) == cmdRecvd) {
+    timerWrite(askExpireTimer, 0);
+    timerStop(askExpireTimer);
+    // Edited: Adding in making the screen black whenever waitCmd is called 
+    tft.fillRect(0, 0, 135, 65, TFT_BLACK);
+    tft.setTextColor(TFT_GREEN);
+    cmdRecvd = waitingCmd;
+    progress = progress + 10;
+    broadcast("P: " + String(progress));
+
+    redrawCmdRecvd = true;
+  } else if (recvd[0] == 'P') {
+    recvd.remove(0, 3);
+    progress = recvd.toInt();
+    redrawProgress = true;
+  } else if(recvd[0] == 'X') {
+    forceRedraw = false;
+    mistakesMade++;
+  } 
 }
 
 void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
@@ -99,85 +177,8 @@ void IRAM_ATTR onAskReqTimer() {
 
 void IRAM_ATTR onAskExpireTimer() {
   askExpired = true;
-  
-  if(!forceRedraw) {
-    broadcast("X: Mistake made");
-    mistakesMade++;
-    mistakesRedraw = true;
-  }
   timerStop(askExpireTimer);
   timerWrite(askExpireTimer, 0);
-}
-
-void IRAM_ATTR onCmdRedraw() {
-  tft.fillRect(0, 115, 135, 135, TFT_BLACK);
-  broadcast("R: command redraw");
-  drawControls();
-}
-
-void receiveCallback(const esp_now_recv_info_t *macAddr, const uint8_t *data, int dataLen)
-/* Called when data is received
-   You can receive 3 types of messages
-   1) a "ASK" message, which indicates that your device should display the cmd if the device is free
-   2) a "DONE" message, which indicates the current ASK? cmd has been executed
-   3) a "PROGRESS" message, indicating a change in the progress of the spaceship
-   
-   Messages are formatted as follows:
-   [A/D]: cmd
-   For example, an ASK message for "Twist the wutangs":
-   A: Twist the wutangs
-   For example, a DONE message for "Engage the devnobs":
-   D: Engage the devnobs
-   For example, a PROGESS message for 75% progress
-   P: 75
-*/
-{
-  // Only allow a maximum of 250 characters in the message + a null terminating byte
-  char buffer[ESP_NOW_MAX_DATA_LEN + 1];
-  int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
-  strncpy(buffer, (const char *)data, msgLen);
-
-  // Make sure we are null terminated
-  buffer[msgLen] = 0;
-  String recvd = String(buffer);
-  Serial.println(recvd);
-  // Format the MAC address
-  char macStr[18];
-  // formatMacAddress(macAddr, macStr, 18);
-
-  // Send Debug log message to the serial port
-  Serial.printf("Received message from: %s \n%s\n", macStr, buffer);
-  if (recvd[0] == 'A' && cmdRecvd == waitingCmd && random(100) < 30)  //only take an ask if you don't have an ask already and only take it XX% of the time
-  {
-    recvd.remove(0, 3);
-    cmdRecvd = recvd;
-    redrawCmdRecvd = true;
-    timerStart(askExpireTimer);  //once you get an ask, a timer starts
-  } else if (recvd[0] == 'D' && recvd.substring(3) == cmdRecvd) {
-    timerWrite(askExpireTimer, 0);
-    timerStop(askExpireTimer);
-    // Edited: Adding in making the screen black whenever waitCmd is called 
-    tft.fillRect(0, 0, 135, 65, TFT_BLACK);
-    tft.setTextColor(TFT_GREEN);
-    timerFlash = false;
-    cmdRecvd = waitingCmd;
-    progress = progress + 10;
-    broadcast("P: " + String(progress));
-
-    //When done, get new commands
-    onCmdRedraw();
-    redrawCmdRecvd = true;
-  } else if (recvd[0] == 'P') {
-    recvd.remove(0, 3);
-    progress = recvd.toInt();
-    redrawProgress = true;
-  } else if(recvd[0] == 'R') {
-    forceRedraw = true;
-    onAskExpireTimer();
-  } else if(recvd[0] == 'X') {
-    mistakesMade++;
-    mistakesRedraw = true;
-  } 
 }
 
 void espnowSetup() {
@@ -221,7 +222,7 @@ void textSetup() {
   tft.fillScreen(TFT_BLACK);
   tft.setTextColor(TFT_GREEN, TFT_BLACK);
   drawControls();
-  tft.fillRect(0, 0, 135, 65, TFT_BLACK);
+  
   cmdRecvd = waitingCmd;
   redrawCmdRecvd = true;
 }
@@ -266,29 +267,28 @@ void drawControls() {
   tft.drawString(cmd2.substring(cmd2.indexOf(' ') + 1), 0, 175 + lineHeight, 2);
 }
 
-int lastUpdatedTime = 0; 
-
 void loop() {
 
-  // Regenerating new commands every 10 seconds
-  if (millis() - lastUpdatedTime >= 10000) {
+  // Regenerating new button commands every 30 seconds
+  if (millis() - lastUpdatedTime >= 30000) {
     lastUpdatedTime = millis();
 
-    // Redraw the background behind the text
-    tft.fillRect(0, 115, tft.width(), tft.height(), TFT_BLACK);
+    // Redraw the background behind the button text
+    tft.fillRect(0, 115, 135, 135, TFT_BLACK);
     
+    // Broadcast to other ESPs that buttons are being redrawn, reset asks to waitingCmd
+    forceRedraw = true;
+    onAskExpireTimer();
     // Redraw the newly generated commands through this call below 
     drawControls();
   }
 
   if (scheduleCmd1Send) {
     broadcast("D: " + cmd1);
-    onCmdRedraw();
     scheduleCmd1Send = false;
   }
   if (scheduleCmd2Send) {
     broadcast("D: " + cmd2);
-    onCmdRedraw();
     scheduleCmd2Send = false;
   }
 
@@ -297,20 +297,68 @@ void loop() {
     broadcast("A: " + cmdAsk);
     scheduleCmdAsk = false;
   }
+
   if (askExpired) {
-    progress = max(0, progress - 1);
-    broadcast(String(progress));
-    //tft.fillRect(0, 0, 135, 90, TFT_RED);
+    
+    //Check if redrawing because of force randomizing or mistake made
+    if(!forceRedraw) {
+      broadcast("X: Mistake made");
+      mistakesMade++;
+    }
+
     tft.fillRect(0, 0, 135, 65, TFT_BLACK);
     cmdRecvd = waitingCmd;
     redrawCmdRecvd = true;
     askExpired = false;
+    forceRedraw = false;
   }
 
-  if(timerReadSeconds(askExpireTimer) > 12) {
-    redrawCmdRecvd = true;
+  //Mistake drawing conditionals
+  if (mistakesMade >= 1){
+    tft.drawLine(5, lineHeight * 2 + 30, 25, lineHeight * 2 + 50, TFT_RED);
+    tft.drawLine(25, lineHeight * 2 + 30, 5, lineHeight * 2 + 50, TFT_RED);
+  }
+
+  if (mistakesMade >= 2) {
+    tft.drawLine(29, lineHeight * 2 + 30, 49, lineHeight * 2 + 50, TFT_RED);
+    tft.drawLine(49, lineHeight * 2 + 30, 29, lineHeight * 2 + 50, TFT_RED);
+  }
+
+  if (mistakesMade >= 3) {
+    tft.drawLine(53, lineHeight * 2 + 30, 73, lineHeight * 2 + 50, TFT_RED);
+    tft.drawLine(73, lineHeight * 2 + 30, 53, lineHeight * 2 + 50, TFT_RED);
+  }
+
+  if (mistakesMade >= 4) {
+    tft.drawLine(77, lineHeight * 2 + 30, 97, lineHeight * 2 + 50, TFT_RED);
+    tft.drawLine(97, lineHeight * 2 + 30, 77, lineHeight * 2 + 50, TFT_RED);
+  }
+
+  //If 5 mistakes made, game over screen
+  if (mistakesMade == 5) {
+    tft.fillScreen(TFT_GREEN);
+    tft.setTextSize(3);
+    tft.setTextColor(TFT_RED, TFT_GREEN);
+    tft.drawString("GAME", 20, 80, 2);
+    tft.drawString("OVER", 20, 140, 2);
+    delay(6000);
+    ESP.restart();
+  }
+
+  double timeElapsed = timerReadSeconds(askExpireTimer); 
+
+  //if timeElapsed is between 50-80% of total expireLength, set flashing color to Yellow
+  if (timeElapsed > (0.5 * expireLength) && timeElapsed < (0.8 * expireLength)) {
+    setYellow = true;
     timerFlash = true;
-  } else { 
+    redrawCmdRecvd = true;
+  } else if (timeElapsed >= (0.8 * expireLength)) {
+    //if timeElapsed is over 80% of total expireLength, set flashing color to Red
+    setYellow = false;
+    timerFlash = true;
+    redrawCmdRecvd = true;
+  } else {
+    setYellow = false;
     timerFlash = false;
   }
 
@@ -319,69 +367,40 @@ void loop() {
     tft.fillRect(16, lineHeight * 2 + 14 + 1, (((expireLength * 1000000.0) - timerRead(askExpireTimer)) / (expireLength * 1000000.0)) * 98, 4, TFT_RED);
     lastRedrawTime = millis();
   }
+
+  
   
   if (redrawCmdRecvd || redrawProgress) {
     
-    if (timerFlash) {
-      // Read the remaining time -> convert it to int
-      int timeElapsed = timerRead(askExpireTimer) / 1000000; 
-
-      // Debugging the timer values
-      Serial.printf("Time Elapsed: %d seconds\n", timeElapsed);
-
-      // Adjust text color based on the time left
-      // Use tft.setTextColor(TFT_color, TFT_BLACK); to tft.setTextColor(foreground, background)
-      if (timeElapsed < 5) {
-        // Serial.println("Setting text color to GREEN");
-        tft.setTextColor(TFT_GREEN, TFT_BLACK); 
-      } else if (timeElapsed < 18) {
-        // Serial.println("Setting text color to YELLOW");
-        tft.setTextColor(TFT_YELLOW, TFT_BLACK);
+    //Conditional to alternate between yellow/white and red/white flashing
+    if(timerFlash) {
+      if(flash) {
+        if(setYellow){
+          delay(250);
+          tft.setTextColor(TFT_YELLOW);
+        } else {
+          delay(100);
+          tft.setTextColor(TFT_RED);
+        }
+        flash = false;
       } else {
-        // Serial.println("Setting text color to RED");
-        tft.setTextColor(TFT_RED, TFT_BLACK);
+        delay(250);
+        tft.setTextColor(TFT_WHITE);
+        flash = true;
       }
-
     } else {
-      Serial.println("Timer Flash inactive, setting GREEN");
-      tft.setTextColor(TFT_GREEN, TFT_BLACK);
+      tft.setTextColor(TFT_GREEN);
+    }
+
+    //force setting waitingCmd to always be green
+    if(cmdRecvd == waitingCmd) {
+      tft.setTextColor(TFT_GREEN);
     }
     
+    tft.fillRect(0, 0, 135, 65, TFT_BLACK);
     tft.drawString(cmdRecvd.substring(0, cmdRecvd.indexOf(' ')), 0, 0, 2);
     tft.drawString(cmdRecvd.substring(cmdRecvd.indexOf(' ') + 1), 0, 0 + lineHeight, 2);
     redrawCmdRecvd = false;
-
-    if (mistakesRedraw) {
-      if (mistakesMade >= 1){
-        tft.drawLine(5, lineHeight * 2 + 30, 25, lineHeight * 2 + 50, TFT_RED);
-        tft.drawLine(25, lineHeight * 2 + 30, 5, lineHeight * 2 + 50, TFT_RED);
-      }
-
-      if (mistakesMade >= 2) {
-        tft.drawLine(29, lineHeight * 2 + 30, 49, lineHeight * 2 + 50, TFT_RED);
-        tft.drawLine(49, lineHeight * 2 + 30, 29, lineHeight * 2 + 50, TFT_RED);
-      }
-
-      if (mistakesMade >= 3) {
-        tft.drawLine(53, lineHeight * 2 + 30, 73, lineHeight * 2 + 50, TFT_RED);
-        tft.drawLine(73, lineHeight * 2 + 30, 53, lineHeight * 2 + 50, TFT_RED);
-      }
-
-      if (mistakesMade >= 4) {
-        tft.drawLine(77, lineHeight * 2 + 30, 97, lineHeight * 2 + 50, TFT_RED);
-        tft.drawLine(97, lineHeight * 2 + 30, 77, lineHeight * 2 + 50, TFT_RED);
-      }
-
-      if (mistakesMade == 5) {
-        tft.fillScreen(TFT_GREEN);
-        tft.setTextSize(3);
-        tft.setTextColor(TFT_RED, TFT_GREEN);
-        tft.drawString("GAME", 20, 20, 2);
-        tft.drawString("OVER", 20, 80, 2);
-        delay(6000);
-        ESP.restart();
-      }
-    }
 
     if (progress >= 100) {
       tft.fillScreen(TFT_BLUE);
@@ -406,20 +425,20 @@ void loop() {
     redrawProgress = false;
   }
 
-  // Adding in Diego's code for single player mode to fake the data
+  // Adding in Diego's code for single player mode to fake receiving an ask
   // Current time tracking for 10-second interval
   
-  // Uncomment the below code for debugging purposes 
+  // Uncomment the below code for debugging purposes:  
   // static unsigned long lastReceiveCallbackTime = 0;
   
   // // Check if 25 seconds have passed
   // if (millis() - lastReceiveCallbackTime > 10000) {
-  //   lastReceiveCallbackTime = millis();
+  // lastReceiveCallbackTime = millis();
 
-  //   const char* fakeData = "A: Twist the wutangs";  // Sample message
-  //   int fakeDataLen = strlen(fakeData);
+  // const char* fakeData = "A: Twist the wutangs";  // Sample message
+  // int fakeDataLen = strlen(fakeData);
     
-  //   // Call the receiveCallback function with simulated data
-  //   receiveCallback(NULL, (const uint8_t*)fakeData, fakeDataLen);
-  // }
+  //Call the receiveCallback function with simulated data
+  // receiveCallback(NULL, (const uint8_t*)fakeData, fakeDataLen);
+  //}
 }
